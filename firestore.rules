@@ -1,0 +1,2 @@
+rules_version = '2';
+service cloud.firestore { match /databases/{database}/documents { function manager(){return request.auth != null && request.auth.token.email in ['nikkhaikal@gmail.com','nealia.najihah@gmail.com'];} function editor(){return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'editor';} match /dashboards/main {allow read: if request.auth != null;allow create,update,delete: if manager() || editor();}match /users/{userId}{allow read: if request.auth != null;allow write: if false;}}}

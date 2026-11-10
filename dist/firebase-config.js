@@ -1,0 +1,1 @@
+export const firebaseConfig={apiKey:"AIzaSyA7Ba0Rtq4zUDlxA-thSOO5TJrCNbrbsgk",authDomain:"jihacowaydashboard.firebaseapp.com",projectId:"jihacowaydashboard",storageBucket:"jihacowaydashboard.firebasestorage.app",messagingSenderId:"616879897690",appId:"1:616879897690:web:cb3455370eb0977e586c63"};
