@@ -1,23 +1,27 @@
 # Jiha Dashboard
 
-The website is a static Netlify site in `dist/`, with Supabase for sign-in and shared data. GitHub `main` deploys automatically to Netlify. `netlify.toml` sets `dist` as the publish directory; no build command is required.
+A Netlify site in `dist/` with Supabase Auth and Postgres. GitHub `main` deploys to Netlify. HP logins use their HP code as username; no signup or password emails are sent.
 
-## Set up Supabase
+## Required one-time setup
 
-1. Open the Supabase project `qsqsdhvfvqrckcridoiq`.
-2. In **Authentication → Providers → Email**, enable email/password sign-up and **Confirm email**. Email confirmation is required for the manager security rule and HP invitation claims.
-3. Open **SQL Editor → New query**. Paste and run the entire contents of [`supabase/schema.sql`](supabase/schema.sql). The SQL creates the tables, access rules, and the free-plan `claim_hp_invite` database function.
-4. In **Authentication → URL Configuration**, set the Site URL to `https://jihadashboard.netlify.app` and add `https://jihadashboard.netlify.app/**` as a redirect URL.
-5. The website’s public Project URL and publishable key are in `dist/supabase-config.js`. Never put a Supabase secret or service-role key in this folder.
+1. In Supabase SQL Editor, run `supabase/schema.sql` if it has not already been run, then run `supabase/username-and-monthly.sql` once. This preserves HP reports when an inactive login is deleted and adds monthly archives.
+2. In Netlify, open **Site configuration → Environment variables** and add `SUPABASE_SECRET_KEY` with the Supabase project's **secret** key (`sb_secret_...`). Restrict it to Functions if Netlify offers that scope. Never put this key in `dist/`, GitHub, or a chat message. Redeploy after saving it.
+3. In Supabase **Authentication → Providers → Email**, turn off **Confirm email** and **Allow new users to sign up**. Existing users can still sign in. The Netlify function creates users through the server-side admin API with their email marked confirmed.
+4. The existing admin account `nikkhaikal@gmail.com` signs in as `admin` using its Supabase password. If that password is unknown, set it directly in Supabase **Authentication → Users**. This is the initial bootstrap step and does not send email.
+5. Create/confirm the Jiha account `nealia.najihah@gmail.com` in Supabase **Authentication → Users**, with a password, then Jiha signs in as `jiha`. The admin may later change Jiha's password from Admin account controls.
 
-## First sign-in and HP registration
+Do not add the secret key as a normal website variable or client-side JavaScript. It bypasses Row Level Security and belongs only in Netlify Functions.
 
-The admin (`nikkhaikal@gmail.com`) and Jiha (`nealia.najihah@gmail.com`) choose **Create my login** with their email and a new password. They confirm their email and sign in. Their verified addresses grant team manager access; the password from Firebase does not transfer.
+## Accounts and access
 
-A manager registers an HP code, name, and email. This creates an invitation in Supabase. The new HP chooses **Create my login**, confirms their email, signs in, and claims the code. That account can then register another HP under it. Each HP can edit their own table and the tables of HPs they directly registered. The admin and Jiha can edit all HP tables and the main dashboard. These permissions are enforced by Supabase Row Level Security.
+Admin and Jiha can create HP accounts from the dashboard using an HP code, name, and initial password of at least 12 characters. The HP code is the username. The account is created without email. HP users can edit their own table; managers can edit all tables. Only admin can set any user's password and delete an HP login. The delete control is enabled only when that HP has never signed in or has not signed in for at least 90 days. Deleting the login keeps the HP table and prior report figures; managers can still view and edit them.
 
-The team scoreboard sums the HP tables’ Actual Recruitment, NAHP, AHP, Total HP, Keyin, and Net values. Target Collection goes in its Target cell and Actual Collection goes in its Actual cell. SHI Personal is `Actual Collection / Target Collection × 100` for one HP. SHI Group uses the sums across all HPs. Zero or blank targets display a dash.
+New passwords are entered by the admin and shared directly with the user. The site does not show an existing password. An HP who forgets their password asks the admin for a new one.
+
+## Monthly reports
+
+A manager can extend or shorten the visible monthly timeline by setting its start and end dates. Notes are stored by calendar month, so shortening the timeline does not delete them. A manager also sets the month-end date. When a manager first opens the dashboard on or after that date, a database transaction archives the main dashboard and all HP figures, clears target and actual cells for the new period, and advances the next end date by one month. The report history remains viewable. The whole report downloads as UTF-8 CSV, which Google Sheets and Excel can open, and the page has a print view. If nobody opens the dashboard on the end date, closing happens on the next manager visit.
 
 ## Existing Firebase data
 
-This code switches the website to Supabase, but does not automatically transfer data from Firebase. If there are existing HP records or dashboard values, export them before retiring Firebase and import them into the Supabase tables. Existing Firebase passwords cannot be copied; people create new Supabase logins.
+Firebase accounts and passwords do not transfer. Existing HP data, if any, must be migrated separately before retiring Firebase.
