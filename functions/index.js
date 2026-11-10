@@ -1,1 +1,26 @@
-const {onCall,HttpsError}=require('firebase-functions/v2/https');const{initializeApp}=require('firebase-admin/app');const{getAuth}=require('firebase-admin/auth');const{getFirestore}=require('firebase-admin/firestore');initializeApp();const managers=new Set(['nikkhaikal@gmail.com','nealia.najihah@gmail.com']);exports.createAccount=onCall(async request=>{const caller=request.auth?.token?.email?.toLowerCase();if(!caller||!managers.has(caller))throw new HttpsError('permission-denied','Only Admin and Jiha can create accounts.');const{name,email,role}=request.data||{};if(!name||!email||!['viewer','editor'].includes(role))throw new HttpsError('invalid-argument','Name, email and a valid role are required.');const temporaryPassword=crypto.randomUUID().replaceAll('-','').slice(0,12),user=await getAuth().createUser({displayName:name,email,password:temporaryPassword});await getFirestore().doc(`users/${user.uid}`).set({name,email,role,createdAt:new Date().toISOString(),createdBy:caller});return{email,temporaryPassword};});
+const {onCall,HttpsError}=require('firebase-functions/v2/https');
+const {initializeApp}=require('firebase-admin/app');
+const {getAuth}=require('firebase-admin/auth');
+const {getFirestore}=require('firebase-admin/firestore');
+const crypto=require('node:crypto');
+initializeApp();
+const managers=new Set(['nikkhaikal@gmail.com','nealia.najihah@gmail.com']);
+
+exports.createAccount=onCall(async request=>{
+  const caller=request.auth?.token?.email?.toLowerCase();
+  if(!caller||!managers.has(caller))throw new HttpsError('permission-denied','Only Jiha and the admin can add HP accounts.');
+  const {code:rawCode,name:rawName,email:rawEmail,role}=request.data||{};
+  const code=String(rawCode||'').trim().toUpperCase(),name=String(rawName||'').trim(),email=String(rawEmail||'').trim().toLowerCase();
+  if(!/^[A-Z0-9-]{2,24}$/.test(code)||!name||name.length>100||!/^\S+@\S+\.\S+$/.test(email)||!['viewer','editor'].includes(role))throw new HttpsError('invalid-argument','Enter a unique HP code (letters, numbers or hyphens), name, email and role.');
+  const firestore=getFirestore(),hpRef=firestore.doc(`hps/${code}`);
+  if((await hpRef.get()).exists)throw new HttpsError('already-exists','This HP code already exists.');
+  let account,created=false,temporaryPassword;
+  try{account=await getAuth().getUserByEmail(email)}catch(error){if(error.code!=='auth/user-not-found')throw error}
+  if(account){const profile=await firestore.doc(`users/${account.uid}`).get();if(profile.exists&&profile.data().hpCode)throw new HttpsError('already-exists','This account already has an HP code.');}
+  if(!account){temporaryPassword=crypto.randomBytes(18).toString('base64url');account=await getAuth().createUser({displayName:name,email,password:temporaryPassword});created=true}
+  try{
+    await hpRef.create({name,email,uid:account.uid,createdBy:caller,createdAt:new Date().toISOString()});
+    await firestore.doc(`users/${account.uid}`).set({name,email,role,hpCode:code,createdBy:caller},{merge:true});
+  }catch(error){if(created)await getAuth().deleteUser(account.uid).catch(()=>{});if(error.code===6)throw new HttpsError('already-exists','This HP code already exists.');throw error}
+  return {code,email,temporaryPassword:temporaryPassword||null,existingAccount:!created};
+});
