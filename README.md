@@ -1,27 +1,25 @@
 # Jiha Dashboard
 
-A Netlify site in `dist/` with Supabase Auth and Postgres. GitHub `main` deploys to Netlify. HP logins use their HP code as username; no signup or password emails are sent.
+A Netlify site with website-managed usernames and passwords. Supabase is the database only. The browser never connects directly to Supabase; Netlify Functions validate sessions and enforce permissions.
 
-## Required one-time setup
+## Database setup
 
-1. In Supabase SQL Editor, run `supabase/schema.sql` if it has not already been run, then run `supabase/username-and-monthly.sql` once. This preserves HP reports when an inactive login is deleted and adds monthly archives.
-2. In Netlify, open **Site configuration → Environment variables** and add `SUPABASE_SECRET_KEY` with the Supabase project's **secret** key (`sb_secret_...`). Restrict it to Functions if Netlify offers that scope. Never put this key in `dist/`, GitHub, or a chat message. Redeploy after saving it.
-3. In Supabase **Authentication → Providers → Email**, turn off **Allow new users to sign up** when the dashboard allows it. Keep the Email provider enabled for password sign-in. The Netlify function creates users through the server-side admin API with their email marked confirmed, so confirmation emails are unnecessary.
-4. The existing admin account `nikkhaikal@gmail.com` signs in as `admin` using its Supabase password. If that password is unknown, set it directly in Supabase **Authentication → Users**. This is the initial bootstrap step and does not send email.
-5. Create/confirm the Jiha account `nealia.najihah@gmail.com` in Supabase **Authentication → Users**, with a password, then Jiha signs in as `jiha`. The admin may later change Jiha's password from Admin account controls.
+The original `supabase/schema.sql` and `supabase/username-and-monthly.sql` were run on the project during the earlier version. Run `supabase/custom-auth.sql` once in Supabase SQL Editor for the new login system. The old Supabase Auth tables and accounts remain unused; they can be removed later after the new site is working.
 
-Do not add the secret key as a normal website variable or client-side JavaScript. It bypasses Row Level Security and belongs only in Netlify Functions.
+## Netlify environment variables
 
-## Accounts and access
+Set `SUPABASE_SECRET_KEY` to the project's `sb_secret_...` key. Set `ADMIN_BOOTSTRAP_CODE` to a long random code (at least 24 characters). Both belong in Netlify's server-side environment variables, never in `dist/`, GitHub, or chat. Redeploy after setting them.
 
-Admin and Jiha can create HP accounts from the dashboard using an HP code, name, and initial password of at least 12 characters. The HP code is the username. The account is created without email. HP users can edit their own table; managers can edit all tables. Only admin can set any user's password and delete an HP login. The delete control is enabled only when that HP has never signed in or has not signed in for at least 90 days. Deleting the login keeps the HP table and prior report figures; managers can still view and edit them.
+The first visit to the new site shows **Set up admin**. The admin enters that bootstrap code and chooses a password of at least 12 characters. The setup action works only while no app users exist. The admin then signs in as `admin` and creates Jiha as a **Manager** (username `jiha`) inside the dashboard. No Supabase Auth account or email is needed. Admin, Jiha and HPs can create HP logins. HP codes are usernames. HPs can edit their own table and the accounts they register.
 
-New passwords are entered by the admin and shared directly with the user. The site does not show an existing password. An HP who forgets their password asks the admin for a new one.
+Passwords are hashed with a unique salt using Node's `scrypt` and stored in `public.app_users`. Sessions use random, hashed tokens in `public.app_sessions` and HttpOnly, Secure, SameSite cookies. Five failed password attempts lock an account for 15 minutes. The Netlify function reads and writes Supabase using its secret key; the browser cannot read the password hashes or secret key.
 
-## Monthly reports
+Admin can set a new password for any user, which revokes that user's sessions. Admin can delete HP logins that never signed in or have not signed in for 90 days. The HP table and report figures remain. Jiha can create HP accounts and edit all tables, but cannot change other users' passwords or delete accounts. HP users can create child HP accounts and edit their own table and those child HP tables.
 
-A manager can extend or shorten the visible monthly timeline by setting its start and end dates. Notes are stored by calendar month, so shortening the timeline does not delete them. A manager also sets the month-end date. When a manager first opens the dashboard on or after that date, a database transaction archives the main dashboard and all HP figures, clears target and actual cells for the new period, and advances the next end date by one month. The report history remains viewable. The whole report downloads as UTF-8 CSV, which Google Sheets and Excel can open, and the page has a print view. If nobody opens the dashboard on the end date, closing happens on the next manager visit.
+## Reports
 
-## Existing Firebase data
+Managers can set the month-end date and extend or shorten the visible monthly timeline. On the first manager visit on or after the end date, a database transaction archives the dashboard and all HP figures, clears target and actual cells, and advances the next end date by one month. Historical figures remain available. The whole report can be downloaded as UTF-8 CSV for Google Sheets or Excel, and printed.
 
-Firebase accounts and passwords do not transfer. Existing HP data, if any, must be migrated separately before retiring Firebase.
+## Deployment
+
+`main` deploys automatically to Netlify. Keep the custom-auth branch in a draft pull request until `custom-auth.sql` has run and `ADMIN_BOOTSTRAP_CODE` is configured. Merge, deploy, and set the admin password on the website. Never send the bootstrap code or password in chat.
