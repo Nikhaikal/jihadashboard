@@ -43,6 +43,8 @@ The callable `createAccount` function checks that the caller is Jiha, the admin,
 
 Each account added from the dashboard needs a unique HP code, name, and login email. Its individual HP table is stored in Firestore at `hps/{code}`. A signed-in HP member can register an HP beneath their account, edit their own table, and edit the tables of HPs they directly registered. Jiha and the admin can edit every HP table. The scoreboard sums the **Actual** entries for Recruitment, NAHP, AHP, Total HP, Keyin, and Net across all HP tables. Empty or nonnumeric Actual values count as zero. The team dashboard targets and monthly timeline remain editable by Jiha and the admin.
 
+Target Collection and Actual Collection are new rows in each HP table and in the dashboard. Enter the target in the Target column of Target Collection and the result in the Actual column of Actual Collection. SHI Personal is calculated as Actual Collection divided by Target Collection times 100. Dashboard SHI Group uses the sums of all HP collections. When the target is zero or blank, SHI displays a dash.
+
 After pulling this update, redeploy both Firebase components with `firebase deploy --only firestore:rules,functions`. Netlify automatically deploys the website from GitHub once the new commit reaches `main`. The Firebase callable function may require a billing enabled Firebase project.
 
 After these Firebase steps, deploy the static site to Netlify using the GitHub or Netlify Drop instructions above.
