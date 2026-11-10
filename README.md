@@ -1,50 +1,23 @@
-# Jiha Dashboard — Netlify deployment
+# Jiha Dashboard
 
-This is a plain static website: there is no install or build step. The dashboard itself is in `dist/index.html` and its Netlify publish folder is `dist`.
+The website is a static Netlify site in `dist/`, with Supabase for sign-in and shared data. GitHub `main` deploys automatically to Netlify. `netlify.toml` sets `dist` as the publish directory; no build command is required.
 
-## Deploy from Netlify Drop
+## Set up Supabase
 
-1. Open the `dist` folder in Finder.
-2. Go to [Netlify Drop](https://app.netlify.com/drop).
-3. Drag the complete `dist` folder onto the page.
+1. Open the Supabase project `qsqsdhvfvqrckcridoiq`.
+2. In **Authentication → Providers → Email**, enable email/password sign-up and **Confirm email**. Email confirmation is required for the manager security rule and HP invitation claims.
+3. Open **SQL Editor → New query**. Paste and run the entire contents of [`supabase/schema.sql`](supabase/schema.sql). The SQL creates the tables, access rules, and the free-plan `claim_hp_invite` database function.
+4. In **Authentication → URL Configuration**, set the Site URL to `https://jihadashboard.netlify.app` and add `https://jihadashboard.netlify.app/**` as a redirect URL.
+5. The website’s public Project URL and publishable key are in `dist/supabase-config.js`. Never put a Supabase secret or service-role key in this folder.
 
-## Deploy from GitHub
+## First sign-in and HP registration
 
-1. Create a GitHub repository and upload the entire `jiha-dashboard` folder.
-2. In Netlify, choose **Add new site** → **Import an existing project**.
-3. Select the repository.
-4. Use these settings:
-   - Build command: leave blank
-   - Publish directory: `dist`
-5. Select **Deploy site**.
+The admin (`nikkhaikal@gmail.com`) and Jiha (`nealia.najihah@gmail.com`) choose **Create my login** with their email and a new password. They confirm their email and sign in. Their verified addresses grant team manager access; the password from Firebase does not transfer.
 
-`netlify.toml` already provides these settings, so Netlify should detect them automatically.
+A manager registers an HP code, name, and email. This creates an invitation in Supabase. The new HP chooses **Create my login**, confirms their email, signs in, and claims the code. That account can then register another HP under it. Each HP can edit their own table and the tables of HPs they directly registered. The admin and Jiha can edit all HP tables and the main dashboard. These permissions are enforced by Supabase Row Level Security.
 
-## Firebase setup (required before Netlify deployment)
+The team scoreboard sums the HP tables’ Actual Recruitment, NAHP, AHP, Total HP, Keyin, and Net values. Target Collection goes in its Target cell and Actual Collection goes in its Actual cell. SHI Personal is `Actual Collection / Target Collection × 100` for one HP. SHI Group uses the sums across all HPs. Zero or blank targets display a dash.
 
-The dashboard uses the Firebase project `jihacowaydashboard` for Authentication and Cloud Firestore.
+## Existing Firebase data
 
-1. In Firebase Console, enable **Authentication → Email/Password**.
-2. Create the first two Authentication users: `nikkhaikal@gmail.com` and `nealia.najihah@gmail.com`.
-3. Create a Cloud Firestore database in Production mode.
-4. Install the Firebase CLI, then run these commands from this folder:
-
-   ```bash
-   firebase login
-   firebase use jihacowaydashboard
-   firebase deploy --only firestore:rules
-   cd functions && npm install && cd ..
-   firebase deploy --only functions
-   ```
-
-The callable `createAccount` function checks that the caller is Jiha, the admin, or an HP with a verified account before registering another HP. Firestore rules enforce which HP tables each signed-in person can edit.
-
-## HP accounts and team scoreboard
-
-Each account added from the dashboard needs a unique HP code, name, and login email. Its individual HP table is stored in Firestore at `hps/{code}`. A signed-in HP member can register an HP beneath their account, edit their own table, and edit the tables of HPs they directly registered. Jiha and the admin can edit every HP table. The scoreboard sums the **Actual** entries for Recruitment, NAHP, AHP, Total HP, Keyin, and Net across all HP tables. Empty or nonnumeric Actual values count as zero. The team dashboard targets and monthly timeline remain editable by Jiha and the admin.
-
-Target Collection and Actual Collection are new rows in each HP table and in the dashboard. Enter the target in the Target column of Target Collection and the result in the Actual column of Actual Collection. SHI Personal is calculated as Actual Collection divided by Target Collection times 100. Dashboard SHI Group uses the sums of all HP collections. When the target is zero or blank, SHI displays a dash.
-
-After pulling this update, redeploy both Firebase components with `firebase deploy --only firestore:rules,functions`. Netlify automatically deploys the website from GitHub once the new commit reaches `main`. The Firebase callable function may require a billing enabled Firebase project.
-
-After these Firebase steps, deploy the static site to Netlify using the GitHub or Netlify Drop instructions above.
+This code switches the website to Supabase, but does not automatically transfer data from Firebase. If there are existing HP records or dashboard values, export them before retiring Firebase and import them into the Supabase tables. Existing Firebase passwords cannot be copied; people create new Supabase logins.
