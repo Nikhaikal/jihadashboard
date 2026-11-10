@@ -6,7 +6,7 @@ A Netlify site in `dist/` with Supabase Auth and Postgres. GitHub `main` deploys
 
 1. In Supabase SQL Editor, run `supabase/schema.sql` if it has not already been run, then run `supabase/username-and-monthly.sql` once. This preserves HP reports when an inactive login is deleted and adds monthly archives.
 2. In Netlify, open **Site configuration → Environment variables** and add `SUPABASE_SECRET_KEY` with the Supabase project's **secret** key (`sb_secret_...`). Restrict it to Functions if Netlify offers that scope. Never put this key in `dist/`, GitHub, or a chat message. Redeploy after saving it.
-3. In Supabase **Authentication → Providers → Email**, turn off **Confirm email** and **Allow new users to sign up**. Existing users can still sign in. The Netlify function creates users through the server-side admin API with their email marked confirmed.
+3. In Supabase **Authentication → Providers → Email**, turn off **Allow new users to sign up** when the dashboard allows it. Keep the Email provider enabled for password sign-in. The Netlify function creates users through the server-side admin API with their email marked confirmed, so confirmation emails are unnecessary.
 4. The existing admin account `nikkhaikal@gmail.com` signs in as `admin` using its Supabase password. If that password is unknown, set it directly in Supabase **Authentication → Users**. This is the initial bootstrap step and does not send email.
 5. Create/confirm the Jiha account `nealia.najihah@gmail.com` in Supabase **Authentication → Users**, with a password, then Jiha signs in as `jiha`. The admin may later change Jiha's password from Admin account controls.
 
