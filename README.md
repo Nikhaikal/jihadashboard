@@ -1,23 +1,25 @@
 # Jiha Dashboard
 
-The website is a static Netlify site in `dist/`, with Supabase for sign-in and shared data. GitHub `main` deploys automatically to Netlify. `netlify.toml` sets `dist` as the publish directory; no build command is required.
+A Netlify site with website-managed usernames and passwords. Supabase is the database only. The browser never connects directly to Supabase; Netlify Functions validate sessions and enforce permissions.
 
-## Set up Supabase
+## Database setup
 
-1. Open the Supabase project `qsqsdhvfvqrckcridoiq`.
-2. In **Authentication → Providers → Email**, enable email/password sign-up and **Confirm email**. Email confirmation is required for the manager security rule and HP invitation claims.
-3. Open **SQL Editor → New query**. Paste and run the entire contents of [`supabase/schema.sql`](supabase/schema.sql). The SQL creates the tables, access rules, and the free-plan `claim_hp_invite` database function.
-4. In **Authentication → URL Configuration**, set the Site URL to `https://jihadashboard.netlify.app` and add `https://jihadashboard.netlify.app/**` as a redirect URL.
-5. The website’s public Project URL and publishable key are in `dist/supabase-config.js`. Never put a Supabase secret or service-role key in this folder.
+The original `supabase/schema.sql` and `supabase/username-and-monthly.sql` were run on the project during the earlier version. Run `supabase/custom-auth.sql` once in Supabase SQL Editor for the new login system. The old Supabase Auth tables and accounts remain unused; they can be removed later after the new site is working.
 
-## First sign-in and HP registration
+## Netlify environment variables
 
-The admin (`nikkhaikal@gmail.com`) and Jiha (`nealia.najihah@gmail.com`) choose **Create my login** with their email and a new password. They confirm their email and sign in. Their verified addresses grant team manager access; the password from Firebase does not transfer.
+Set `SUPABASE_SECRET_KEY` to the project's `sb_secret_...` key. Set `ADMIN_BOOTSTRAP_CODE` to a long random code (at least 24 characters). Both belong in Netlify's server-side environment variables, never in `dist/`, GitHub, or chat. Redeploy after setting them.
 
-A manager registers an HP code, name, and email. This creates an invitation in Supabase. The new HP chooses **Create my login**, confirms their email, signs in, and claims the code. That account can then register another HP under it. Each HP can edit their own table and the tables of HPs they directly registered. The admin and Jiha can edit all HP tables and the main dashboard. These permissions are enforced by Supabase Row Level Security.
+The first visit to the new site shows **Set up admin**. The admin enters that bootstrap code and chooses a password of at least 12 characters. The setup action works only while no app users exist. The admin then signs in as `admin` and creates Jiha as a **Manager** (username `jiha`) inside the dashboard. No Supabase Auth account or email is needed. Admin, Jiha and HPs can create HP logins. HP codes are usernames. HPs can edit their own table and the accounts they register.
 
-The team scoreboard sums the HP tables’ Actual Recruitment, NAHP, AHP, Total HP, Keyin, and Net values. Target Collection goes in its Target cell and Actual Collection goes in its Actual cell. SHI Personal is `Actual Collection / Target Collection × 100` for one HP. SHI Group uses the sums across all HPs. Zero or blank targets display a dash.
+Passwords are hashed with a unique salt using Node's `scrypt` and stored in `public.app_users`. Sessions use random, hashed tokens in `public.app_sessions` and HttpOnly, Secure, SameSite cookies. Five failed password attempts lock an account for 15 minutes. The Netlify function reads and writes Supabase using its secret key; the browser cannot read the password hashes or secret key.
 
-## Existing Firebase data
+Admin can set a new password for any user, which revokes that user's sessions. Admin can delete HP logins that never signed in or have not signed in for 90 days. The HP table and report figures remain. Jiha can create HP accounts and edit all tables, but cannot change other users' passwords or delete accounts. HP users can create child HP accounts and edit their own table and those child HP tables.
 
-This code switches the website to Supabase, but does not automatically transfer data from Firebase. If there are existing HP records or dashboard values, export them before retiring Firebase and import them into the Supabase tables. Existing Firebase passwords cannot be copied; people create new Supabase logins.
+## Reports
+
+Managers can set the month-end date and extend or shorten the visible monthly timeline. On the first manager visit on or after the end date, a database transaction archives the dashboard and all HP figures, clears target and actual cells, and advances the next end date by one month. Historical figures remain available. The whole report can be downloaded as UTF-8 CSV for Google Sheets or Excel, and printed.
+
+## Deployment
+
+`main` deploys automatically to Netlify. Keep the custom-auth branch in a draft pull request until `custom-auth.sql` has run and `ADMIN_BOOTSTRAP_CODE` is configured. Merge, deploy, and set the admin password on the website. Never send the bootstrap code or password in chat.
