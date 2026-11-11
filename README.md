@@ -4,7 +4,7 @@ A Netlify site with website-managed usernames and passwords. Supabase is the dat
 
 ## Database setup
 
-The original `supabase/schema.sql` and `supabase/username-and-monthly.sql` were run on the project during the earlier version. Run `supabase/custom-auth.sql` once in Supabase SQL Editor for the new login system. The old Supabase Auth tables and accounts remain unused; they can be removed later after the new site is working.
+The original `supabase/schema.sql` and `supabase/username-and-monthly.sql` were run on the project during the earlier version. Run `supabase/custom-auth.sql` once in Supabase SQL Editor for the new login system. Later feature migrations are `supabase/hp-row-controls.sql` and `supabase/weekly-goals-reminders.sql`; run each once before deploying its code. The old Supabase Auth tables and accounts remain unused; they can be removed later after the new site is working.
 
 ## Netlify environment variables
 
@@ -23,3 +23,9 @@ Managers can set the month-end date and extend or shorten the visible monthly ti
 ## Deployment
 
 `main` deploys automatically to Netlify. Keep the custom-auth branch in a draft pull request until `custom-auth.sql` has run and `ADMIN_BOOTSTRAP_CODE` is configured. Merge, deploy, and set the admin password on the website. Never send the bootstrap code or password in chat.
+
+## Weekly goals and Jiha reminders
+
+Each reporting month has four weeks. Admin and Jiha can set all four week-end dates together; the fourth end date also sets the month-end date. The site shows live countdowns to each week end and month end in Kuala Lumpur time. Admin and Jiha can add up to 20 goals per week with a title and optional target. Every signed-in HP can see the goals.
+
+Admin and Jiha can create, edit, and archive reminders for Jiha. Each reminder has a checklist, start date, optional end date, and a repeat schedule (once or every N days, weeks, or months). A due reminder can be checked off each day. Daily completion records are stored in the database and the most recent seven days are shown beside each reminder. Archiving hides a reminder but keeps its history.
