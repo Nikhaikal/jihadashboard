@@ -116,6 +116,18 @@ export default async function handler(request){
       await patch('team_hps',`code=eq.${filter(hp.code)}`,{metrics:{...(hp.metrics||{}),...changes}});
       return json(200,{ok:true});
     }
+    if(action==='submitFigures'){
+      const dashboardChanges=input.dashboardChanges||{},hpChanges=input.hpChanges||{};
+      const validChanges=(changes,prefix,max)=>changes&&typeof changes==='object'&&!Array.isArray(changes)&&Object.keys(changes).length<=max&&Object.entries(changes).every(([key,value])=>checkKey(key,prefix)&&typeof value==='string'&&value.length<=500);
+      if(!validChanges(dashboardChanges,'score',80)||!hpChanges||typeof hpChanges!=='object'||Array.isArray(hpChanges)||Object.keys(hpChanges).length>100||Object.values(hpChanges).some(changes=>!validChanges(changes,'hp',60)))return json(400,{error:'Invalid figures'});
+      if(Object.keys(dashboardChanges).length&&!manager(user))return json(403,{error:'Managers only'});
+      const currentHps=await rows('team_hps','select=code,owner_id,parent_id,name,metrics,hidden_rows&order=code.asc'),byCode=new Map(currentHps.map(hp=>[hp.code,hp]));
+      for(const code of Object.keys(hpChanges)){const hp=byCode.get(code);if(!hp)return json(404,{error:`HP ${code} not found`});if(!manager(user)&&hp.owner_id!==user.id&&hp.parent_id!==user.id)return json(403,{error:`You cannot edit ${code}`})}
+      if(Object.keys(dashboardChanges).length){const row=await one('team_dashboard','id=eq.main&select=values');await patch('team_dashboard','id=eq.main',{values:{...(row?.values||{}),...dashboardChanges}})}
+      for(const [code,changes] of Object.entries(hpChanges)){const hp=byCode.get(code);await patch('team_hps',`code=eq.${filter(code)}`,{metrics:{...(hp.metrics||{}),...changes}})}
+      const [savedDashboard,savedHps]=await Promise.all([one('team_dashboard','id=eq.main&select=values'),rows('team_hps','select=code,owner_id,parent_id,name,metrics,hidden_rows&order=code.asc')]);
+      return json(200,{dashboard:savedDashboard?.values||{},hps:savedHps});
+    }
     if(action==='setHpRows'){
       if(!manager(user))return json(403,{error:'Only admin and Jiha can change HP rows'});
       const allowed=new Set([2,3,4,5,6,8]);
