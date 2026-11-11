@@ -30,6 +30,14 @@ const sessionCookie=(token,maxAge)=>`jiha_session=${token}; Path=/; HttpOnly; Se
 async function currentUser(request){const token=cookie(request);if(!/^[a-f0-9]{64}$/.test(token))return null;const session=await one('app_sessions',`token_hash=eq.${sha(token)}&select=user_id,expires_at`);if(!session||new Date(session.expires_at).getTime()<Date.now())return null;const user=await one('app_users',`id=eq.${filter(session.user_id)}&select=id,username,name,role,active,last_sign_in_at`);return user?.active?user:null}
 function publicUser(user){return user?{id:user.id,username:user.username,name:user.name,role:user.role}:null}
 const manager=user=>['admin','manager'].includes(user.role);
+async function ensureJihaHp(){
+  const jiha=await one('app_users','username=eq.jiha&select=id,name,role');
+  if(!jiha||jiha.role!=='manager')return;
+  const existing=await one('team_hps','code=eq.JIHA&select=owner_id');
+  if(!existing)await insert('team_hps',{code:'JIHA',owner_id:jiha.id,parent_id:null,name:jiha.name,metrics:{}});
+  else if(!existing.owner_id)await patch('team_hps','code=eq.JIHA',{owner_id:jiha.id,name:jiha.name});
+  else if(existing.owner_id!==jiha.id)throw new Error('The JIHA HP code belongs to another account');
+}
 function checkKey(key,prefix){return typeof key==='string'&&(new RegExp(`^${prefix}-\\d+-(label|target|actual)$`).test(key)||prefix==='score'&&/^month-\d{4}-\d{2}$/.test(key))}
 export default async function handler(request){
   if(request.method!=='POST')return json(405,{error:'POST required'});
@@ -60,6 +68,7 @@ export default async function handler(request){
     const user=await currentUser(request);if(!user)return json(401,{error:'Sign in first'});
     if(action==='logout'){const token=cookie(request);await del('app_sessions',`token_hash=eq.${sha(token)}`);return json(200,{ok:true},{'set-cookie':sessionCookie('',0)})}
     if(action==='state'){
+      await ensureJihaHp();
       if(manager(user))await db('/rest/v1/rpc/close_team_month','POST',{});
       const [dashboard,hps,settings,reports]=await Promise.all([
         one('team_dashboard','id=eq.main&select=values'),rows('team_hps','select=code,owner_id,parent_id,name,metrics&order=code.asc'),
@@ -90,10 +99,12 @@ export default async function handler(request){
     if(action==='createUser'){
       const username=String(input.username||'').trim().toLowerCase(),name=String(input.name||'').trim(),role=input.role==='manager'?'manager':'hp';
       if(role==='manager'&&user.role!=='admin')return json(403,{error:'Only admin can create a manager'});
+      if(username==='admin'||username==='jiha'&&role!=='manager'||role==='manager'&&username!=='jiha')return json(400,{error:'Use jiha for the manager account and another code for HPs'});
       if(!validUsername(username)||name.length<1||name.length>100||!validPassword(input.password))return json(400,{error:'Enter a valid username, name and password of 12–128 characters'});
       if(await one('app_users',`username=eq.${filter(username)}&select=id`))return json(409,{error:'Username already exists'});
       const created=(await insert('app_users',{username,name,role,password_hash:await hashPassword(input.password)}))[0];
       if(role==='hp')try{await insert('team_hps',{code:username.toUpperCase(),owner_id:created.id,parent_id:user.role==='hp'?user.id:null,name,metrics:{}})}catch(error){await del('app_users',`id=eq.${filter(created.id)}`);throw error}
+      if(role==='manager')try{await ensureJihaHp()}catch(error){await del('app_users',`id=eq.${filter(created.id)}`);throw error}
       return json(200,{ok:true});
     }
     if(user.role!=='admin')return json(403,{error:'Admin only'});
