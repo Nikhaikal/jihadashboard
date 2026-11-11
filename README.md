@@ -18,7 +18,7 @@ Admin can set a new password for any user, which revokes that user's sessions. A
 
 ## Reports
 
-Managers can set the month-end date and extend or shorten the visible monthly timeline. On the first manager visit on or after the end date, a database transaction archives the dashboard and all HP figures, clears target and actual cells, and advances the next end date by one month. Historical figures remain available. The whole report can be downloaded as UTF-8 CSV for Google Sheets or Excel, and printed.
+Managers can set the month-end date and extend or shorten the visible monthly timeline. On the first manager visit on or after the end date, a database transaction archives the dashboard and all HP figures, clears target and actual cells, and advances the next end date by one month. Historical figures remain available. Admin and Jiha can show or hide Recruitment, NAHP, AHP, Total HP, T/O, and WS Player separately for each HP; hidden rows keep their values and are excluded from visible totals and exports until shown again. Run `supabase/hp-row-controls.sql` once before deploying this feature. The whole report can be downloaded as UTF-8 CSV for Google Sheets or Excel, and printed.
 
 ## Deployment
 

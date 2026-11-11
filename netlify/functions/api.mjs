@@ -71,7 +71,7 @@ export default async function handler(request){
       await ensureJihaHp();
       if(manager(user))await db('/rest/v1/rpc/close_team_month','POST',{});
       const [dashboard,hps,settings,reports]=await Promise.all([
-        one('team_dashboard','id=eq.main&select=values'),rows('team_hps','select=code,owner_id,parent_id,name,metrics&order=code.asc'),
+        one('team_dashboard','id=eq.main&select=values'),rows('team_hps','select=code,owner_id,parent_id,name,metrics,hidden_rows&order=code.asc'),
         one('report_settings','id=eq.main&select=period_start,period_end,timeline_start,timeline_end'),
         rows('monthly_reports','select=period_start,period_end,dashboard_values,hp_values&order=period_end.desc')]);
       return json(200,{user:publicUser(user),dashboard:dashboard?.values||{},hps,settings,reports});
@@ -87,6 +87,15 @@ export default async function handler(request){
       if(!manager(user)&&hp.owner_id!==user.id&&hp.parent_id!==user.id)return json(403,{error:'You cannot edit this HP'});
       if(!checkKey(input.key,'hp')||typeof input.value!=='string'||input.value.length>500)return json(400,{error:'Invalid field'});
       await patch('team_hps',`code=eq.${filter(hp.code)}`,{metrics:{...hp.metrics,[input.key]:input.value}});return json(200,{ok:true});
+    }
+    if(action==='setHpRows'){
+      if(!manager(user))return json(403,{error:'Only admin and Jiha can change HP rows'});
+      const allowed=new Set([2,3,4,5,6,8]);
+      if(!Array.isArray(input.hiddenRows)||input.hiddenRows.length>allowed.size||input.hiddenRows.some(index=>!Number.isInteger(index)||!allowed.has(index)))return json(400,{error:'Invalid HP rows'});
+      const hp=await one('team_hps',`code=eq.${filter(input.code||'')}&select=code`);
+      if(!hp)return json(404,{error:'HP not found'});
+      await patch('team_hps',`code=eq.${filter(hp.code)}`,{hidden_rows:[...new Set(input.hiddenRows)].sort((a,b)=>a-b)});
+      return json(200,{ok:true});
     }
     if(action==='settings'){
       if(!manager(user))return json(403,{error:'Managers only'});
