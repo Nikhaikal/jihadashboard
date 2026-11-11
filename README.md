@@ -4,7 +4,7 @@ A Netlify site with website-managed usernames and passwords. Supabase is the dat
 
 ## Database setup
 
-The original `supabase/schema.sql` and `supabase/username-and-monthly.sql` were run on the project during the earlier version. Run `supabase/custom-auth.sql` once in Supabase SQL Editor for the new login system. Later feature migrations are `supabase/hp-row-controls.sql`, `supabase/weekly-goals-reminders.sql`, and `supabase/month-end-archive.sql`; run each before deploying its code. The old Supabase Auth tables and accounts remain unused; they can be removed later after the new site is working.
+The original `supabase/schema.sql` and `supabase/username-and-monthly.sql` were run on the project during the earlier version. Run `supabase/custom-auth.sql` once in Supabase SQL Editor for the new login system. Later feature migrations are `supabase/hp-row-controls.sql`, `supabase/weekly-goals-reminders.sql`, `supabase/month-end-archive.sql`, and `supabase/backdated-week-period.sql`; run each before deploying its code. The old Supabase Auth tables and accounts remain unused; they can be removed later after the new site is working.
 
 ## Netlify environment variables
 
@@ -26,6 +26,6 @@ Managers can set the reporting period's end date and extend or shorten the visib
 
 ## Weekly goals and Jiha reminders
 
-Each reporting month has four weeks. Admin and Jiha can set all four week-end dates together; the fourth end date also sets the month-end date. The site shows live countdowns to each week end and month end in Kuala Lumpur time. Admin and Jiha can add up to 20 goals per week with a title and optional target. Every signed-in HP can see the goals.
+Each reporting month has four weeks. Admin and Jiha can move the active period's start date earlier and set all four week-end dates together, including dates before today; the fourth end date also sets the month-end date. The site shows live countdowns to each week end and month end in Kuala Lumpur time. Admin and Jiha can add up to 20 goals per week with a title and optional target. Every signed-in HP can see the goals.
 
 Admin and Jiha can create, edit, and archive reminders for Jiha. Each reminder has a checklist, start date, optional end date, and a repeat schedule (once or every N days, weeks, or months). A due reminder can be checked off each day. Daily completion records are stored in the database and the most recent seven days are shown beside each reminder. Archiving hides a reminder but keeps its history.

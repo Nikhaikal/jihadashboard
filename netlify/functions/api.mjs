@@ -148,11 +148,10 @@ export default async function handler(request){
     }
     if(action==='setWeekEnds'){
       if(!manager(user))return json(403,{error:'Managers only'});
-      const setting=await one('report_settings','id=eq.main&select=period_start,period_end'),ends=input.ends;
-      if(!Array.isArray(ends)||ends.length!==4||ends.some(day=>typeof day!=='string'||!datePattern.test(day))||ends[0]<setting.period_start||ends.some((day,i)=>i>0&&day<=ends[i-1]))return json(400,{error:'Choose four increasing week-end dates within the reporting month'});
-      const weeks=await ensureWeeks(setting),updates=weeks.map((week,i)=>({...week,end_date:ends[i]}));
-      if(ends[3]!==setting.period_end)await patch('report_settings','id=eq.main',{period_end:ends[3],closing_day:Number(ends[3].slice(-2))});
-      await db('/rest/v1/weekly_plans?on_conflict=period_start,week_no','POST',updates,'resolution=merge-duplicates,return=representation');
+      const setting=await one('report_settings','id=eq.main&select=period_start,period_end'),start=input.start,ends=input.ends;
+      if(typeof start!=='string'||!datePattern.test(start)||!Array.isArray(ends)||ends.length!==4||ends.some(day=>typeof day!=='string'||!datePattern.test(day))||ends[0]<start||ends.some((day,i)=>i>0&&day<=ends[i-1]))return json(400,{error:'Choose a start date and four increasing week-end dates'});
+      await ensureWeeks(setting);
+      await db('/rest/v1/rpc/set_week_period','POST',{p_start:start,p_ends:ends});
       return json(200,{ok:true});
     }
     if(action==='setWeekGoals'){
