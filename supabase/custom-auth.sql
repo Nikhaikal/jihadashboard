@@ -54,7 +54,7 @@ begin
     insert into public.monthly_reports(period_start,period_end,dashboard_values,hp_values)
     select setting.period_start,setting.period_end,
       (select values from public.team_dashboard where id='main'),
-      coalesce((select jsonb_agg(jsonb_build_object('code',code,'name',name,'metrics',metrics) order by code) from public.team_hps),'[]'::jsonb);
+      coalesce((select jsonb_agg(jsonb_build_object('code',code,'name',name,'metrics',metrics,'hidden_rows',hidden_rows) order by code) from public.team_hps),'[]'::jsonb);
     update public.team_dashboard set values=(select coalesce(jsonb_object_agg(key,value),'{}'::jsonb) from jsonb_each(values) where key like '%-label' or key like 'month-%') where id='main';
     update public.team_hps set metrics=(select coalesce(jsonb_object_agg(key,value),'{}'::jsonb) from jsonb_each(metrics) where key like '%-label');
     next_month := date_trunc('month',setting.period_end+interval '1 month')::date;
