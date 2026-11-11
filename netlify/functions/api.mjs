@@ -77,9 +77,10 @@ export default async function handler(request){
     if(action==='logout'){const token=cookie(request);await del('app_sessions',`token_hash=eq.${sha(token)}`);return json(200,{ok:true},{'set-cookie':sessionCookie('',0)})}
     if(action==='state'){
       await ensureJihaHp();
-      if(manager(user))await db('/rest/v1/rpc/close_team_month','POST',{});
-      const settings=await one('report_settings','id=eq.main&select=period_start,period_end,timeline_start,timeline_end');
-      const weeks=await ensureWeeks(settings),today=malaysiaToday(),historyFrom=dateFromMs(dateMs(today)-30*dayMs);
+      const today=malaysiaToday();
+      let settings=await one('report_settings','id=eq.main&select=period_start,period_end,timeline_start,timeline_end');
+      if(settings.period_end<today){await db('/rest/v1/rpc/close_team_month','POST',{});settings=await one('report_settings','id=eq.main&select=period_start,period_end,timeline_start,timeline_end')}
+      const weeks=await ensureWeeks(settings),historyFrom=dateFromMs(dateMs(today)-30*dayMs);
       const [dashboard,hps,reports,reminders,reminderDays]=await Promise.all([
         one('team_dashboard','id=eq.main&select=values'),rows('team_hps','select=code,owner_id,parent_id,name,metrics,hidden_rows&order=code.asc'),
         rows('monthly_reports','select=period_start,period_end,dashboard_values,hp_values&order=period_end.desc'),

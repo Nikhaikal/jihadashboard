@@ -48,5 +48,11 @@ test('submitting Jiha 3 and Najwa 2 yields team Keyin 5, ignoring an old dashboa
     vm.createContext(context);
     vm.runInContext(`${math}; this.total=teamActual`,context);
     assert.equal(context.total(data.hps,0),5);
+    for(const [jihaKeyin,expectedTotal] of [['5',7],['2',4]]){
+      const correction=new Request('https://example.test/.netlify/functions/api',{method:'POST',headers:{cookie:`jiha_session=${token}`,'content-type':'application/json'},body:JSON.stringify({action:'submitFigures',dashboardChanges:{},hpChanges:{JIHA:{'hp-0-actual':jihaKeyin}}})});
+      const corrected=await handler(correction);
+      assert.equal(corrected.status,200);
+      assert.equal(context.total((await corrected.json()).hps,0),expectedTotal);
+    }
   }finally{globalThis.fetch=originalFetch}
 });
