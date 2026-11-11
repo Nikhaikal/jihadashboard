@@ -92,12 +92,29 @@ export default async function handler(request){
       if(!checkKey(input.key,'score')||typeof input.value!=='string'||input.value.length>500)return json(400,{error:'Invalid field'});
       const row=await one('team_dashboard','id=eq.main&select=values');await patch('team_dashboard','id=eq.main',{values:{...(row?.values||{}),[input.key]:input.value}});return json(200,{ok:true});
     }
+    if(action==='updateDashboardBatch'){
+      if(!manager(user))return json(403,{error:'Managers only'});
+      const changes=input.changes;
+      if(!changes||typeof changes!=='object'||Array.isArray(changes)||Object.keys(changes).length>80||Object.entries(changes).some(([key,value])=>!checkKey(key,'score')||typeof value!=='string'||value.length>500))return json(400,{error:'Invalid dashboard figures'});
+      const row=await one('team_dashboard','id=eq.main&select=values');
+      await patch('team_dashboard','id=eq.main',{values:{...(row?.values||{}),...changes}});
+      return json(200,{ok:true});
+    }
     if(action==='updateHp'){
       const hp=await one('team_hps',`code=eq.${filter(input.code||'')}&select=code,owner_id,parent_id,metrics`);
       if(!hp)return json(404,{error:'HP not found'});
       if(!manager(user)&&hp.owner_id!==user.id&&hp.parent_id!==user.id)return json(403,{error:'You cannot edit this HP'});
       if(!checkKey(input.key,'hp')||typeof input.value!=='string'||input.value.length>500)return json(400,{error:'Invalid field'});
       await patch('team_hps',`code=eq.${filter(hp.code)}`,{metrics:{...hp.metrics,[input.key]:input.value}});return json(200,{ok:true});
+    }
+    if(action==='updateHpBatch'){
+      const hp=await one('team_hps',`code=eq.${filter(input.code||'')}&select=code,owner_id,parent_id,metrics`);
+      if(!hp)return json(404,{error:'HP not found'});
+      if(!manager(user)&&hp.owner_id!==user.id&&hp.parent_id!==user.id)return json(403,{error:'You cannot edit this HP'});
+      const changes=input.changes;
+      if(!changes||typeof changes!=='object'||Array.isArray(changes)||Object.keys(changes).length>60||Object.entries(changes).some(([key,value])=>!checkKey(key,'hp')||typeof value!=='string'||value.length>500))return json(400,{error:'Invalid HP figures'});
+      await patch('team_hps',`code=eq.${filter(hp.code)}`,{metrics:{...(hp.metrics||{}),...changes}});
+      return json(200,{ok:true});
     }
     if(action==='setHpRows'){
       if(!manager(user))return json(403,{error:'Only admin and Jiha can change HP rows'});
