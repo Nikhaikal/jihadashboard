@@ -11,9 +11,9 @@ const validPassword=p=>typeof p==='string'&&p.length>=12&&p.length<=128;
 const validUsername=u=>typeof u==='string'&&/^[a-z0-9-]{2,24}$/.test(u);
 async function hashPassword(password){const salt=randomBytes(16).toString('hex');const hash=await scrypt(password,salt,64);return `scrypt:${salt}:${hash.toString('hex')}`}
 async function verifyPassword(password,stored){const [kind,salt,hex]=String(stored).split(':');if(kind!=='scrypt'||!salt||!hex)return false;const hash=await scrypt(password,salt,64);return safeEqual(hash.toString('hex'),hex)}
-async function db(path,method='GET',body){
+async function db(path,method='GET',body,prefer='return=representation'){
   if(!secret)throw new Error('SUPABASE_SECRET_KEY is not configured in Netlify');
-  const headers={apikey:secret,'content-type':'application/json',Prefer:'return=representation'};
+  const headers={apikey:secret,'content-type':'application/json',Prefer:prefer};
   const res=await fetch(`${base}${path}`,{method,headers,body:body===undefined?undefined:JSON.stringify(body)});
   const data=await res.json().catch(()=>null);
   if(!res.ok)throw new Error(data?.message||data?.msg||data?.error||`Database error ${res.status}`);
@@ -30,6 +30,14 @@ const sessionCookie=(token,maxAge)=>`jiha_session=${token}; Path=/; HttpOnly; Se
 async function currentUser(request){const token=cookie(request);if(!/^[a-f0-9]{64}$/.test(token))return null;const session=await one('app_sessions',`token_hash=eq.${sha(token)}&select=user_id,expires_at`);if(!session||new Date(session.expires_at).getTime()<Date.now())return null;const user=await one('app_users',`id=eq.${filter(session.user_id)}&select=id,username,name,role,active,last_sign_in_at`);return user?.active?user:null}
 function publicUser(user){return user?{id:user.id,username:user.username,name:user.name,role:user.role}:null}
 const manager=user=>['admin','manager'].includes(user.role);
+const datePattern=/^\d{4}-\d{2}-\d{2}$/;
+const dayMs=86400000;
+const dateMs=value=>Date.parse(`${value}T00:00:00Z`);
+const dateFromMs=value=>new Date(value).toISOString().slice(0,10);
+function malaysiaToday(){const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kuala_Lumpur',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const part=type=>parts.find(item=>item.type===type).value;return `${part('year')}-${part('month')}-${part('day')}`}
+function weekDefaults(start,end){const first=dateMs(start),length=Math.round((dateMs(end)-first)/dayMs)+1;return [1,2,3,4].map(week_no=>({period_start:start,week_no,end_date:dateFromMs(first+(Math.max(week_no,Math.floor(length*week_no/4))-1)*dayMs),goals:[]}))}
+async function ensureWeeks(settings){const existing=await rows('weekly_plans',`period_start=eq.${settings.period_start}&select=period_start,week_no,end_date,goals&order=week_no.asc`);if(existing.length===4)return existing;const defaults=weekDefaults(settings.period_start,settings.period_end),missing=defaults.filter(week=>!existing.some(row=>row.week_no===week.week_no));if(missing.length)await db('/rest/v1/weekly_plans?on_conflict=period_start,week_no','POST',missing,'resolution=ignore-duplicates,return=representation');return rows('weekly_plans',`period_start=eq.${settings.period_start}&select=period_start,week_no,end_date,goals&order=week_no.asc`)}
+function reminderDue(reminder,day){if(day<reminder.starts_on||reminder.ends_on&&day>reminder.ends_on)return false;const elapsed=Math.round((dateMs(day)-dateMs(reminder.starts_on))/dayMs),interval=reminder.repeat_interval;if(reminder.repeat_type==='none')return elapsed===0;if(reminder.repeat_type==='daily')return elapsed%interval===0;if(reminder.repeat_type==='weekly')return elapsed%(7*interval)===0;const [year,month,startDay]=reminder.starts_on.split('-').map(Number),[y,m,d]=day.split('-').map(Number),monthGap=(y-year)*12+m-month;const daysInMonth=new Date(Date.UTC(y,m,0)).getUTCDate();return monthGap>=0&&monthGap%interval===0&&d===Math.min(startDay,daysInMonth)}
 async function ensureJihaHp(){
   const jiha=await one('app_users','username=eq.jiha&select=id,name,role');
   if(!jiha||jiha.role!=='manager')return;
@@ -70,11 +78,14 @@ export default async function handler(request){
     if(action==='state'){
       await ensureJihaHp();
       if(manager(user))await db('/rest/v1/rpc/close_team_month','POST',{});
-      const [dashboard,hps,settings,reports]=await Promise.all([
+      const settings=await one('report_settings','id=eq.main&select=period_start,period_end,timeline_start,timeline_end');
+      const weeks=await ensureWeeks(settings),today=malaysiaToday(),historyFrom=dateFromMs(dateMs(today)-30*dayMs);
+      const [dashboard,hps,reports,reminders,reminderDays]=await Promise.all([
         one('team_dashboard','id=eq.main&select=values'),rows('team_hps','select=code,owner_id,parent_id,name,metrics,hidden_rows&order=code.asc'),
-        one('report_settings','id=eq.main&select=period_start,period_end,timeline_start,timeline_end'),
-        rows('monthly_reports','select=period_start,period_end,dashboard_values,hp_values&order=period_end.desc')]);
-      return json(200,{user:publicUser(user),dashboard:dashboard?.values||{},hps,settings,reports});
+        rows('monthly_reports','select=period_start,period_end,dashboard_values,hp_values&order=period_end.desc'),
+        manager(user)?rows('jiha_reminders','active=eq.true&select=*&order=created_at.asc'):Promise.resolve([]),
+        manager(user)?rows('jiha_reminder_days',`day=gte.${historyFrom}&select=reminder_id,day,checked,items_snapshot&order=day.desc`):Promise.resolve([])]);
+      return json(200,{user:publicUser(user),dashboard:dashboard?.values||{},hps,settings,reports,weeks,reminders,reminderDays,today});
     }
     if(action==='updateDashboard'){
       if(!manager(user))return json(403,{error:'Managers only'});
@@ -101,8 +112,50 @@ export default async function handler(request){
       if(!manager(user))return json(403,{error:'Managers only'});
       const current=await one('report_settings','id=eq.main&select=period_start,period_end,timeline_start,timeline_end');
       const date=/^\d{4}-\d{2}-\d{2}$/;
-      if(input.period_end){if(!date.test(input.period_end)||input.period_end<current.period_start)return json(400,{error:'End date must be within the current period'});await patch('report_settings','id=eq.main',{period_end:input.period_end,closing_day:Number(input.period_end.slice(-2))})}
+      if(input.period_end){if(!date.test(input.period_end)||dateMs(input.period_end)-dateMs(current.period_start)<3*dayMs)return json(400,{error:'The month needs at least four days for four weeks'});const weeks=await ensureWeeks(current);if(input.period_end<=weeks[2].end_date)return json(400,{error:'Move week 3 earlier before shortening the month'});await patch('report_settings','id=eq.main',{period_end:input.period_end,closing_day:Number(input.period_end.slice(-2))});await patch('weekly_plans',`period_start=eq.${current.period_start}&week_no=eq.4`,{end_date:input.period_end})}
       if(input.timeline_start||input.timeline_end){const start=input.timeline_start,end=input.timeline_end;if(!date.test(start)||!date.test(end)||end<start||new Date(end)-new Date(start)>2*366*86400000)return json(400,{error:'Timeline must be within two years'});await patch('report_settings','id=eq.main',{timeline_start:start,timeline_end:end})}
+      return json(200,{ok:true});
+    }
+    if(action==='setWeekEnds'){
+      if(!manager(user))return json(403,{error:'Managers only'});
+      const setting=await one('report_settings','id=eq.main&select=period_start,period_end'),ends=input.ends;
+      if(!Array.isArray(ends)||ends.length!==4||ends.some(day=>typeof day!=='string'||!datePattern.test(day))||ends[0]<setting.period_start||ends.some((day,i)=>i>0&&day<=ends[i-1]))return json(400,{error:'Choose four increasing week-end dates within the reporting month'});
+      const weeks=await ensureWeeks(setting),updates=weeks.map((week,i)=>({...week,end_date:ends[i]}));
+      if(ends[3]!==setting.period_end)await patch('report_settings','id=eq.main',{period_end:ends[3],closing_day:Number(ends[3].slice(-2))});
+      await db('/rest/v1/weekly_plans?on_conflict=period_start,week_no','POST',updates,'resolution=merge-duplicates,return=representation');
+      return json(200,{ok:true});
+    }
+    if(action==='setWeekGoals'){
+      if(!manager(user))return json(403,{error:'Managers only'});
+      const week_no=Number(input.week_no),goals=input.goals;
+      if(!Number.isInteger(week_no)||week_no<1||week_no>4||!Array.isArray(goals)||goals.length>20||goals.some(goal=>typeof goal?.id!=='string'||!/^[-0-9a-f]{36}$/i.test(goal.id)||typeof goal.title!=='string'||!goal.title.trim()||goal.title.length>100||typeof goal.target!=='string'||goal.target.length>30))return json(400,{error:'Enter up to 20 goals with a title and optional target'});
+      const setting=await one('report_settings','id=eq.main&select=period_start,period_end');await ensureWeeks(setting);
+      await patch('weekly_plans',`period_start=eq.${setting.period_start}&week_no=eq.${week_no}`,{goals:goals.map(goal=>({id:goal.id,title:goal.title.trim(),target:goal.target.trim()}))});
+      return json(200,{ok:true});
+    }
+    if(action==='saveReminder'){
+      if(!manager(user))return json(403,{error:'Only admin and Jiha can manage reminders'});
+      const {title,checklist,repeat_type,repeat_interval,starts_on,ends_on}=input;
+      const interval=Number(repeat_interval);
+      if(typeof title!=='string'||!title.trim()||title.length>120||!Array.isArray(checklist)||checklist.length<1||checklist.length>20||checklist.some(item=>typeof item?.id!=='string'||!/^[-0-9a-f]{36}$/i.test(item.id)||typeof item.text!=='string'||!item.text.trim()||item.text.length>120)||!['none','daily','weekly','monthly'].includes(repeat_type)||!Number.isInteger(interval)||interval<1||interval>31||!datePattern.test(starts_on)||ends_on!==null&&(!datePattern.test(ends_on)||ends_on<starts_on))return json(400,{error:'Enter a title, checklist, repeat schedule, and valid dates'});
+      const data={title:title.trim(),checklist:checklist.map(item=>({id:item.id,text:item.text.trim()})),repeat_type,repeat_interval:interval,starts_on,ends_on};
+      if(input.id){if(!/^[0-9a-f-]{36}$/i.test(input.id))return json(400,{error:'Invalid reminder'});const existing=await one('jiha_reminders',`id=eq.${filter(input.id)}&select=id`);if(!existing)return json(404,{error:'Reminder not found'});await patch('jiha_reminders',`id=eq.${filter(input.id)}`,data)}
+      else await insert('jiha_reminders',{...data,created_by:user.id});
+      return json(200,{ok:true});
+    }
+    if(action==='archiveReminder'){
+      if(!manager(user))return json(403,{error:'Only admin and Jiha can manage reminders'});
+      if(!/^[0-9a-f-]{36}$/i.test(input.id||''))return json(400,{error:'Invalid reminder'});
+      await patch('jiha_reminders',`id=eq.${filter(input.id)}`,{active:false});return json(200,{ok:true});
+    }
+    if(action==='checkReminder'){
+      if(!manager(user))return json(403,{error:'Only admin and Jiha can track reminders'});
+      if(!/^[0-9a-f-]{36}$/i.test(input.id||'')||!Array.isArray(input.checked))return json(400,{error:'Invalid reminder check'});
+      const reminder=await one('jiha_reminders',`id=eq.${filter(input.id)}&active=eq.true&select=*`),today=malaysiaToday();
+      if(!reminder||!reminderDue(reminder,today))return json(400,{error:'This reminder is not due today'});
+      const valid=new Set(reminder.checklist.map(item=>item.id));
+      if(input.checked.some(id=>!valid.has(id)))return json(400,{error:'Invalid checklist item'});
+      await db('/rest/v1/jiha_reminder_days?on_conflict=reminder_id,day','POST',{reminder_id:reminder.id,day:today,checked:[...new Set(input.checked)],items_snapshot:reminder.checklist,updated_at:new Date().toISOString()},'resolution=merge-duplicates,return=representation');
       return json(200,{ok:true});
     }
     if(action==='createUser'){
